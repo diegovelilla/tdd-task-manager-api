@@ -1,11 +1,11 @@
 from typing import Annotated, Iterable
 
 from fastapi import Depends, FastAPI, HTTPException
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import Field
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from .model import Base, Task
+from .models import Base, InputTask, OutputTask, TaskDB
 
 app = FastAPI()
 
@@ -16,20 +16,6 @@ engine = create_engine(SQLITE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base.metadata.create_all(bind=engine)
-
-
-# Task Model
-class TaskModel(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    title: Annotated[str, Field(max_length=50)]
-    completed: bool = False
-
-
-class TaskModelID(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    id: Annotated[int, Field(gt=0)]
-    title: Annotated[str, Field(max_length=50)]
-    completed: bool = False
 
 
 def get_db() -> Iterable[Session] | None:
@@ -46,47 +32,47 @@ def read_root() -> dict:
 
 
 @app.get("/tasks/{task_id}", status_code=200)
-def get_task(task_id: Annotated[int, Field(gt=0)], db: Session = Depends(get_db)) -> TaskModelID:
-    task = db.query(Task).filter(Task.id == task_id).first()
+def get_task(task_id: Annotated[int, Field(gt=0)], db: Session = Depends(get_db)) -> OutputTask:
+    task = db.query(TaskDB).filter(TaskDB.id == task_id).first()
     if not task:
         raise HTTPException(status_code=204, detail=f"Unable to find task {task_id}")
-    return TaskModelID(**task.to_dict())
+    return OutputTask(**task.to_dict())
 
 
 @app.delete("/tasks/{task_id}", status_code=202)
-def delete_task(task_id: Annotated[int, Field(gt=0)], db: Session = Depends(get_db)) -> TaskModelID:
-    task = db.query(Task).filter(Task.id == task_id).first()
+def delete_task(task_id: Annotated[int, Field(gt=0)], db: Session = Depends(get_db)) -> OutputTask:
+    task = db.query(TaskDB).filter(TaskDB.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail=f"Task {task_id} does not exist.")
     db.delete(task)
     db.commit()
-    return TaskModelID(**task.to_dict())
+    return OutputTask(**task.to_dict())
 
 
 @app.post("/tasks/", status_code=201)
-def create_task(task: TaskModel, db: Session = Depends(get_db)) -> TaskModelID:
+def create_task(task: InputTask, db: Session = Depends(get_db)) -> OutputTask:
     title = task.title
     completed = task.completed
     if not title:
         raise HTTPException(status_code=400, detail="Title is required.")
-    new_task = Task(title=title, completed=completed)
+    new_task = TaskDB(title=title, completed=completed)
     db.add(new_task)
     db.commit()
     db.refresh(new_task)
-    return TaskModelID(**new_task.to_dict())
+    return OutputTask(**new_task.to_dict())
 
 
 @app.get("/tasks/", status_code=200)
 def get_tasks(db: Session = Depends(get_db)) -> list:
-    tasks = db.query(Task).all()
+    tasks = db.query(TaskDB).all()
     return [{"id": task.id, "title": task.title, "completed": task.completed} for task in tasks]
 
 
 @app.put("/tasks/{task_id}", status_code=202)
 def update_task(
-    task_id: Annotated[int, Field(gt=0)], task: TaskModel, db: Session = Depends(get_db)
-) -> TaskModelID:
-    prev_task = db.query(Task).filter(Task.id == task_id).first()
+    task_id: Annotated[int, Field(gt=0)], task: InputTask, db: Session = Depends(get_db)
+) -> OutputTask:
+    prev_task = db.query(TaskDB).filter(TaskDB.id == task_id).first()
     if not prev_task:
         raise HTTPException(status_code=404, detail=f"Task {task_id} does not exist.")
 
@@ -95,4 +81,4 @@ def update_task(
 
     db.commit()
     db.refresh(prev_task)
-    return TaskModelID(**prev_task.to_dict())
+    return OutputTask(**prev_task.to_dict())
