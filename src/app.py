@@ -1,6 +1,7 @@
-from typing import Iterable
+from typing import Annotated, Iterable
 
 from fastapi import Depends, FastAPI, HTTPException
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -17,6 +18,19 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base.metadata.create_all(bind=engine)
 
 
+# Task Model
+class InputTask(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    title: Annotated[str, Field(max_length=50)]
+    completed: bool = False
+
+
+class OutputTask(BaseModel):
+    id: Annotated[int, Field(gt=0)]
+    title: Annotated[str, Field(max_length=50)]
+    completed: bool = False
+
+
 def get_db() -> Iterable[Session] | None:
     db = SessionLocal()
     try:
@@ -31,24 +45,24 @@ def read_root() -> dict:
 
 
 @app.get("/tasks/{task_id}", status_code=200)
-def get_task(task_id: int, db: Session = Depends(get_db)) -> dict:
+def get_task(task_id: Annotated[int, Field(gt=0)], db: Session = Depends(get_db)) -> OutputTask:
     task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
-        raise HTTPException(status_code=404, detail=f"Unable to find task {task_id}")
-    return {"id": task.id, "title": task.title, "completed": task.completed}
+        raise HTTPException(status_code=204, detail=f"Unable to find task {task_id}")
+    return OutputTask(**task.to_dict())
 
 
 @app.post("/tasks/", status_code=201)
-def create_task(data: dict, db: Session = Depends(get_db)) -> dict:
-    title = data.get("title")
-    completed = data.get("completed", False)
+def create_task(task: InputTask, db: Session = Depends(get_db)) -> OutputTask:
+    title = task.title
+    completed = task.completed
     if not title:
         raise HTTPException(status_code=400, detail="Title is required.")
     new_task = Task(title=title, completed=completed)
     db.add(new_task)
     db.commit()
     db.refresh(new_task)
-    return {"id": new_task.id, "title": new_task.title, "completed": new_task.completed}
+    return OutputTask(**new_task.to_dict())
 
 
 @app.get("/tasks/", status_code=200)

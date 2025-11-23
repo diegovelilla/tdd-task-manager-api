@@ -13,3 +13,6 @@ class Task(Base):
 
     def __repr__(self) -> str:
         return f"Task(id: {self.id}, title: '{self.title}', completed: {self.completed})"
+
+    def to_dict(self) -> dict:
+        return {"id": self.id, "title": self.title, "completed": self.completed}
