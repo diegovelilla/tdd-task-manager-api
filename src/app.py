@@ -52,6 +52,16 @@ def get_task(task_id: Annotated[int, Field(gt=0)], db: Session = Depends(get_db)
     return OutputTask(**task.to_dict())
 
 
+@app.delete("/tasks/{task_id}", status_code=202)
+def delete_task(task_id: Annotated[int, Field(gt=0)], db: Session = Depends(get_db)) -> OutputTask:
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail=f"Task {task_id} does not exist.")
+    db.delete(task)
+    db.commit()
+    return OutputTask(**task.to_dict())
+
+
 @app.post("/tasks/", status_code=201)
 def create_task(task: InputTask, db: Session = Depends(get_db)) -> OutputTask:
     title = task.title

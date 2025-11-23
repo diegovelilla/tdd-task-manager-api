@@ -86,6 +86,19 @@ def test_get_task_float_id(setup_db):
     assert response.json() == OutputTask(id=1, title="Sample Task 1", completed=False).model_dump()
 
 
+def test_get_task_after_delete(setup_db):
+    response_get_1 = client.get("/tasks/1")
+    assert response_get_1.status_code == 200
+    assert response_get_1.json() == OutputTask(id=1, title="Sample Task 1", completed=False).model_dump()
+
+    response_delete = client.delete("/tasks/1")
+    assert response_delete.status_code == 202
+    assert response_delete.json() == OutputTask(id=1, title="Sample Task 1", completed=False).model_dump()
+
+    response_get_2 = client.get("/tasks/1")
+    assert response_get_2.status_code == 204
+
+
 # Create Tasks ----------------------------------------------------------------------------
 def test_create_task_without_completed(setup_db):
     data = InputTask(title="New Task").model_dump()
@@ -108,6 +121,7 @@ def test_create_task_with_id():
     assert response.json()["detail"][0]["msg"] == "Extra inputs are not permitted"
 
 
+# List tasks
 def test_get_tasks(setup_db):
     response = client.get("/tasks/")
     assert response.status_code == 200
@@ -115,3 +129,31 @@ def test_get_tasks(setup_db):
         OutputTask(id=1, title="Sample Task 1", completed=False).model_dump(),
         OutputTask(id=2, title="Sample Task 2", completed=False).model_dump(),
     ]
+
+
+def test_get_tasks_after_delete(setup_db):
+    response_delete = client.delete("/tasks/1")
+    assert response_delete.status_code == 202
+    assert response_delete.json() == OutputTask(id=1, title="Sample Task 1", completed=False).model_dump()
+
+    response_list = client.get("/tasks/")
+    assert response_list.status_code == 200
+    assert response_list.json() == [OutputTask(id=2, title="Sample Task 2", completed=False).model_dump()]
+
+
+# Delete task
+def test_delete_task(setup_db):
+    response_delete = client.delete("/tasks/1")
+    assert response_delete.status_code == 202
+    assert response_delete.json() == OutputTask(id=1, title="Sample Task 1", completed=False).model_dump()
+
+
+def test_delete_non_existent_task(setup_db):
+    response_delete = client.delete("/tasks/3")
+    assert response_delete.status_code == 404
+
+
+def test_delete_task_with_negative_id(setup_db):
+    response_delete = client.delete("/tasks/-1")
+    assert response_delete.status_code == 422
+    assert response_delete.json()["detail"][0]["msg"] == "Input should be greater than 0"
