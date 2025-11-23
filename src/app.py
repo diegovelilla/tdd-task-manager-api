@@ -5,7 +5,7 @@ from pydantic import Field
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from .models import Base, InputTask, OutputTask, TaskDB
+from .models import Base, InputTask, OutputTask, TaskDB, UserDB
 
 app = FastAPI()
 
@@ -35,8 +35,20 @@ def read_root() -> dict:
 def get_task(task_id: Annotated[int, Field(gt=0)], db: Session = Depends(get_db)) -> OutputTask:
     task = db.query(TaskDB).filter(TaskDB.id == task_id).first()
     if not task:
-        raise HTTPException(status_code=204, detail=f"Unable to find task {task_id}")
+        raise HTTPException(status_code=404, detail=f"Unable to find task {task_id}")
     return OutputTask(**task.to_dict())
+
+
+@app.post("/tasks/", status_code=201)
+def create_task(task: InputTask, db: Session = Depends(get_db)) -> OutputTask:
+    user = db.query(UserDB).filter(UserDB.id == task.user_id).first()
+    if not user:
+        raise HTTPException(status_code=422, detail="User does not exist")
+    new_task = TaskDB(**task.model_dump())
+    db.add(new_task)
+    db.commit()
+    db.refresh(new_task)
+    return OutputTask(**new_task.to_dict())
 
 
 @app.delete("/tasks/{task_id}", status_code=202)
@@ -47,25 +59,6 @@ def delete_task(task_id: Annotated[int, Field(gt=0)], db: Session = Depends(get_
     db.delete(task)
     db.commit()
     return OutputTask(**task.to_dict())
-
-
-@app.post("/tasks/", status_code=201)
-def create_task(task: InputTask, db: Session = Depends(get_db)) -> OutputTask:
-    title = task.title
-    completed = task.completed
-    if not title:
-        raise HTTPException(status_code=400, detail="Title is required.")
-    new_task = TaskDB(title=title, completed=completed)
-    db.add(new_task)
-    db.commit()
-    db.refresh(new_task)
-    return OutputTask(**new_task.to_dict())
-
-
-@app.get("/tasks/", status_code=200)
-def get_tasks(db: Session = Depends(get_db)) -> list:
-    tasks = db.query(TaskDB).all()
-    return [{"id": task.id, "title": task.title, "completed": task.completed} for task in tasks]
 
 
 @app.put("/tasks/{task_id}", status_code=202)
@@ -82,3 +75,9 @@ def update_task(
     db.commit()
     db.refresh(prev_task)
     return OutputTask(**prev_task.to_dict())
+
+
+@app.get("/tasks/", status_code=200)
+def get_tasks(db: Session = Depends(get_db)) -> list:
+    tasks = db.query(TaskDB).all()
+    return [OutputTask(**task.to_dict()) for task in tasks]
